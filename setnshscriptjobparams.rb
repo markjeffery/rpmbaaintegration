@@ -34,6 +34,9 @@
 #   position: A8:F8
 ###
 
+# This job sets 6 parameters for an NSH Script job to values provided.
+# The values can be string literals, or they can have portions substituted for property names.
+# e.g. if param_0 needed to contain the Application name, the value would be rpm{SS_application}
 
 #=== BMC Application Automation Integration Server: BAA ===#
 # [integration_id=2]
@@ -65,17 +68,20 @@ BAA_PASSWORD = decrypt_string_with_prefix(SS_integration_password_enc)
 BAA_ROLE = baa_config["role"]
 BAA_BASE_URL = SS_integration_dns
 
+def sub_tokens(script_params,var_string)
+  write_to("Entered sub_tokens:" + var_string)
+  prop_val = var_string.match('rpm{[^{}]*}')
+  while ! prop_val.nil? do
+    var_string = var_string.sub(prop_val[0],script_params[prop_val[0][4..-2]])
+    prop_val = var_string.match('rpm{[^{}]*}')
+  end
+  write_to("returning: " + var_string)
+  return var_string
+end
+
 begin
   job_name = params["job_name"]
   job_folder = params["job_folder"]
-
-  param = Array.new
-  param[0] = params["param_0"];
-  param[1] = params["param_1"];
-  param[2] = params["param_2"];
-  param[3] = params["param_3"];
-  param[4] = params["param_4"];
-  param[5] = params["param_5"];
 
   session_id = BaaUtilities.baa_soap_login(BAA_BASE_URL, BAA_USERNAME, BAA_PASSWORD)
   raise "Could not login to BAA Cli Tunnel Service" if session_id.nil?
@@ -84,12 +90,13 @@ begin
 
 # clear params first
   BaaUtilities.baa_soap_execute_cli_command_by_param_list(BAA_BASE_URL, session_id, "NSHScriptJob", "clearNSHScriptParameterValuesByGroupAndName", [job_folder, job_name])
-# set params
-  BaaUtilities.baa_soap_execute_cli_command_by_param_list(BAA_BASE_URL, session_id, "NSHScriptJob", "addNSHScriptParameterValueByGroupAndName", [job_folder, job_name, 0, params["param_0"]])
-  BaaUtilities.baa_soap_execute_cli_command_by_param_list(BAA_BASE_URL, session_id, "NSHScriptJob", "addNSHScriptParameterValueByGroupAndName", [job_folder, job_name, 1, params["param_1"]])
-  BaaUtilities.baa_soap_execute_cli_command_by_param_list(BAA_BASE_URL, session_id, "NSHScriptJob", "addNSHScriptParameterValueByGroupAndName", [job_folder, job_name, 2, params["param_2"]])
-  BaaUtilities.baa_soap_execute_cli_command_by_param_list(BAA_BASE_URL, session_id, "NSHScriptJob", "addNSHScriptParameterValueByGroupAndName", [job_folder, job_name, 3, params["param_3"]])
-  BaaUtilities.baa_soap_execute_cli_command_by_param_list(BAA_BASE_URL, session_id, "NSHScriptJob", "addNSHScriptParameterValueByGroupAndName", [job_folder, job_name, 4, params["param_4"]])
-  BaaUtilities.baa_soap_execute_cli_command_by_param_list(BAA_BASE_URL, session_id, "NSHScriptJob", "addNSHScriptParameterValueByGroupAndName", [job_folder, job_name, 5, params["param_5"]])
 
+# set params
+  params.each do |key, value|
+    if /param_(?<pnum>\d+)/ =~ key
+      BaaUtilities.baa_soap_execute_cli_command_by_param_list(BAA_BASE_URL, session_id,
+        "NSHScriptJob", "addNSHScriptParameterValueByGroupAndName",
+        [job_folder, job_name, pnum, sub_tokens(params, value)])
+    end
+  end
 end
